@@ -284,17 +284,15 @@ async def auth_logout(request: Request):
     # validate token first
     payload = verify_token(token)
     exp = payload.get('exp', int(__import__('time').time()))
-    if not hasattr(app.state, 'token_blacklist'):
-        app.state.token_blacklist = {}
-    # cleanup expired entries
-    now = int(__import__('time').time())
-    for t, e in list(app.state.token_blacklist.items()):
-        if e < now:
-            try:
-                del app.state.token_blacklist[t]
-            except Exception:
-                pass
-    app.state.token_blacklist[token] = exp
+    # persist revocation via redis_store (or in-memory fallback)
+    from redis_store import set_revoked_jti
+    try:
+        set_revoked_jti(token, exp)
+    except Exception:
+        # best-effort fallback to in-memory app state
+        if not hasattr(app.state, 'token_blacklist'):
+            app.state.token_blacklist = {}
+        app.state.token_blacklist[token] = exp
     return {'status': 'revoked'}
 
 
@@ -307,26 +305,16 @@ async def auth_revoke_subject(body: dict = Body(...), authorized: dict = Depends
     subject = body.get('subject') if isinstance(body, dict) else None
     if not subject:
         raise HTTPException(status_code=400, detail='subject required')
-    if not hasattr(app.state, 'revoked_subjects'):
-        app.state.revoked_subjects = {}
+    # Revoke subject via redis_store (or in-memory fallback)
+    from redis_store import revoke_subject
     now = int(__import__('time').time())
-    # Revoke for a long period (1 year) or until explicit removal
-    app.state.revoked_subjects[subject] = now + 365 * 24 * 3600
-    # Also add any currently-blacklisted tokens for the subject (best-effort)
+    expiry = now + 365 * 24 * 3600
     try:
-        bl = getattr(app.state, 'token_blacklist', {})
-        for t in list(bl.keys()):
-            try:
-                # decode without verification to inspect subject safely
-                import jwt as _jwt
-                payload = _jwt.decode(t, options={"verify_signature": False})
-                if payload.get('sub') == subject:
-                    # keep existing expiry
-                    app.state.token_blacklist[t] = bl.get(t, now)
-            except Exception:
-                continue
+        revoke_subject(subject, expiry)
     except Exception:
-        pass
+        if not hasattr(app.state, 'revoked_subjects'):
+            app.state.revoked_subjects = {}
+        app.state.revoked_subjects[subject] = expiry
     return {'status': 'revoked', 'subject': subject}
 
 

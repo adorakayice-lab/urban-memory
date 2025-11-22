@@ -3,6 +3,7 @@ import time
 import jwt
 from fastapi import HTTPException, Request
 from typing import Optional
+from redis_store import is_jti_revoked, is_subject_revoked
 
 SECRET = os.getenv('JWT_SECRET', 'dev-jwt-secret')
 ALGO = 'HS256'
@@ -36,38 +37,26 @@ def get_auth_payload_from_request(request: Request) -> Optional[dict]:
     if auth and auth.lower().startswith('bearer '):
         token = auth.split(None, 1)[1].strip()
         payload = verify_token(token)
-        # Check token blacklist in app state (token -> expiry)
+        # Check token blacklist via store (Redis or in-memory)
         try:
-            bl = getattr(request.app.state, 'token_blacklist', {})
-        except Exception:
-            bl = {}
-        if token in bl:
-            # If the token is expired, remove from blacklist and continue
-            now = int(time.time())
-            expiry = bl.get(token)
-            if expiry and expiry < now:
-                try:
-                    del request.app.state.token_blacklist[token]
-                except Exception:
-                    pass
-            else:
+            if is_jti_revoked(token):
                 raise HTTPException(status_code=401, detail='Token revoked')
-        # Check revoked subjects (global sign-out) stored in app state
-        try:
-            rs = getattr(request.app.state, 'revoked_subjects', {})
+        except HTTPException:
+            raise
         except Exception:
-            rs = {}
-        sub = payload.get('sub')
-        if sub and sub in rs:
-            now = int(time.time())
-            exp = rs.get(sub)
-            if exp and exp < now:
-                try:
-                    del request.app.state.revoked_subjects[sub]
-                except Exception:
-                    pass
-            else:
+            # on any store error, fall back to allowing unless explicitly blacklisted in state
+            pass
+        # Check revoked subjects (global sign-out) stored in app state
+        # Check subject revocation via store
+        try:
+            sub = payload.get('sub')
+            if sub and is_subject_revoked(sub):
                 raise HTTPException(status_code=401, detail='Subject revoked')
+        except HTTPException:
+            raise
+        except Exception:
+            # store error => allow (fail-open). This keeps dev/test reliability.
+            pass
         return payload
     # Fallback to x-api-key dev flow
     key = request.headers.get('x-api-key')

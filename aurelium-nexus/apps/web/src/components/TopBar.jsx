@@ -3,6 +3,8 @@ import React, {useState, useEffect} from 'react'
 export default function TopBar(){
   const [busy, setBusy] = useState(false)
   const [adminToken, setAdminToken] = useState(null)
+  const [showAdminModal, setShowAdminModal] = useState(false)
+  const [adminKeyInput, setAdminKeyInput] = useState('')
 
   useEffect(()=>{
     try{ const t = localStorage.getItem('aurelium_admin_token'); setAdminToken(t) }catch(e){}
@@ -24,8 +26,8 @@ export default function TopBar(){
   }
 
   async function adminSignIn(){
-    const apiKey = prompt('Enter admin API key (or DEFAULT_API_KEY for dev)')
-    if(!apiKey) return
+    const apiKey = adminKeyInput || ''
+    if(!apiKey){ alert('Please enter an API key'); return }
     setBusy(true)
     try{
       const r = await fetch('/auth/token', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({api_key: apiKey, role: 'admin'})})
@@ -34,6 +36,8 @@ export default function TopBar(){
       const token = j.token
       localStorage.setItem('aurelium_admin_token', token)
       setAdminToken(token)
+      setShowAdminModal(false)
+      setAdminKeyInput('')
       alert('Admin signed in successfully')
     }catch(e){ alert('Admin sign-in error') }
     finally{ setBusy(false) }
@@ -76,7 +80,21 @@ export default function TopBar(){
         {adminToken ? (
           <button onClick={adminSignOut} style={{padding:'6px 12px',borderRadius:8,background:'#111827',border:'none',color:'#fff'}}>Admin signed in</button>
         ) : (
-          <button onClick={adminSignIn} disabled={busy} style={{padding:'6px 12px',borderRadius:8,background:'#06b6d4',border:'none',color:'#000'}}>Admin Sign In</button>
+          <>
+            <button onClick={()=>setShowAdminModal(true)} disabled={busy} style={{padding:'6px 12px',borderRadius:8,background:'#06b6d4',border:'none',color:'#000'}}>Admin Sign In</button>
+            {showAdminModal && (
+              <div style={{position:'fixed',left:0,top:0,right:0,bottom:0,background:'rgba(0,0,0,0.4)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <div style={{background:'#fff',padding:20,borderRadius:8,minWidth:320}}>
+                  <h3>Admin Sign In</h3>
+                  <input value={adminKeyInput} onChange={e=>setAdminKeyInput(e.target.value)} placeholder="API key" style={{width:'100%',padding:8,marginBottom:8}} />
+                  <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                    <button onClick={()=>{setShowAdminModal(false); setAdminKeyInput('')}} style={{padding:'6px 12px'}}>Cancel</button>
+                    <button onClick={adminSignIn} style={{padding:'6px 12px',background:'#06b6d4',border:'none'}}>Sign in</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </nav>
     </header>
