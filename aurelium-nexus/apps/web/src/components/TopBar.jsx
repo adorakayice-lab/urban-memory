@@ -1,6 +1,52 @@
-import React from 'react'
+import React, {useState} from 'react'
 
 export default function TopBar(){
+  const [busy, setBusy] = useState(false)
+
+  function getToken(){
+    return localStorage.getItem('aurelium_token')
+  }
+
+  async function logout(){
+    if(!confirm('Log out locally and revoke this session?')) return
+    const token = getToken()
+    if(token){
+      try{
+        await fetch('/auth/logout', {method:'POST', headers: {Authorization: `Bearer ${token}`}})
+      }catch(e){
+        // ignore network errors for logout
+      }
+    }
+    localStorage.removeItem('aurelium_token')
+    alert('Logged out locally.')
+    window.location.reload()
+  }
+
+  async function signOutEverywhere(){
+    if(!confirm('Sign out everywhere for your account? This requires an admin token (owner-only).')) return
+    const token = getToken()
+    if(!token){ alert('No local token found.'); return }
+    setBusy(true)
+    try{
+      // try to get sub from /auth/me
+      const me = await fetch('/auth/me', {headers: {Authorization: `Bearer ${token}`}})
+      if(!me.ok){ alert('Unable to determine subject.'); setBusy(false); return }
+      const j = await me.json()
+      const subject = j.sub
+      // send revoke-subject as admin token (expecting admin token in aurelium_admin_token)
+      const adminToken = localStorage.getItem('aurelium_admin_token')
+      if(!adminToken){ alert('Admin token required to sign out everywhere.'); setBusy(false); return }
+      const r = await fetch('/auth/revoke-subject', {method:'POST', headers: {'Content-Type':'application/json', Authorization: `Bearer ${adminToken}`}, body: JSON.stringify({subject})})
+      if(r.ok){
+        alert('Sign out everywhere requested.');
+      } else {
+        alert('Failed to sign out everywhere.');
+      }
+    }catch(e){
+      alert('Error while requesting sign out everywhere')
+    }finally{ setBusy(false) }
+  }
+
   return (
     <header className="topbar">
       <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -9,7 +55,8 @@ export default function TopBar(){
       </div>
       <nav style={{display:'flex',gap:12,alignItems:'center'}}>
         <div style={{fontSize:13,opacity:0.9}}>Chain: Ethereum</div>
-        <button style={{padding:'6px 12px',borderRadius:999,background:'linear-gradient(90deg,#7c3aed,#06b6d4)',border:'none',color:'#000'}}>Connect Wallet</button>
+        <button onClick={logout} style={{padding:'6px 12px',borderRadius:999,background:'linear-gradient(90deg,#7c3aed,#06b6d4)',border:'none',color:'#000'}}>Logout</button>
+        <button onClick={signOutEverywhere} disabled={busy} style={{padding:'6px 12px',borderRadius:8,background:'#ef4444',border:'none',color:'#fff'}}>Sign out everywhere</button>
       </nav>
     </header>
   )
