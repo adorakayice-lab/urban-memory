@@ -1,0 +1,24 @@
+:root{--bg:#000;--panel:#0b0b0b;--glass:rgba(255,255,255,0.04)}
+body,html,#root{height:100%;margin:0;background:var(--bg);color:#fff;font-family:Inter,system-ui,Arial}
+.app-root{min-height:100vh}
+.main{padding:86px 32px}
+.title{font-size:28px;margin:0 0 18px}
+.panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+.panel{display:flex;flex-direction:column;gap:18px}
+.topbar{position:fixed;top:0;left:0;right:0;height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-bottom:1px solid rgba(255,255,255,0.03)}
+.orb{position:fixed;right:28px;bottom:28px;width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#06b6d4);box-shadow:0 8px 30px rgba(0,0,0,0.6);cursor:pointer}
+.orb-panel{position:fixed;right:28px;bottom:102px;width:360px;background:rgba(0,0,0,0.85);border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.06)}
+.portfolio{display:flex;gap:12px;flex-wrap:wrap}
+.asset{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));padding:12px;border-radius:8px;min-width:120px}
+
+@media (max-width: 800px){
+	.main{padding:100px 16px}
+	.panel{padding:16px}
+	.orb-panel{right:12px;left:12px;width:auto}
+	.title{font-size:20px}
+}
+
+.asset:hover{transform:translateY(-6px);transition:transform 200ms ease}
+.topbar{backdrop-filter: blur(6px)}
+
+
