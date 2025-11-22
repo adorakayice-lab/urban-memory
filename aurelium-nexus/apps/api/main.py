@@ -271,6 +271,65 @@ async def auth_refresh(request: Request):
     return {'token': token}
 
 
+@app.post('/auth/logout')
+async def auth_logout(request: Request):
+    """Revoke the provided Bearer token immediately.
+
+    The token string is added to an in-memory blacklist until its natural expiry.
+    """
+    auth = request.headers.get('authorization')
+    if not auth or not auth.lower().startswith('bearer '):
+        raise HTTPException(status_code=401, detail='Authorization Bearer token required')
+    token = auth.split(None, 1)[1].strip()
+    # validate token first
+    payload = verify_token(token)
+    exp = payload.get('exp', int(__import__('time').time()))
+    if not hasattr(app.state, 'token_blacklist'):
+        app.state.token_blacklist = {}
+    # cleanup expired entries
+    now = int(__import__('time').time())
+    for t, e in list(app.state.token_blacklist.items()):
+        if e < now:
+            try:
+                del app.state.token_blacklist[t]
+            except Exception:
+                pass
+    app.state.token_blacklist[token] = exp
+    return {'status': 'revoked'}
+
+
+@app.post('/auth/revoke-subject')
+async def auth_revoke_subject(body: dict = Body(...), authorized: dict = Depends(require_role('admin'))):
+    """Revoke all tokens for a given subject (admin-only).
+
+    Body: {"subject": "dev-user"}
+    """
+    subject = body.get('subject') if isinstance(body, dict) else None
+    if not subject:
+        raise HTTPException(status_code=400, detail='subject required')
+    if not hasattr(app.state, 'revoked_subjects'):
+        app.state.revoked_subjects = {}
+    now = int(__import__('time').time())
+    # Revoke for a long period (1 year) or until explicit removal
+    app.state.revoked_subjects[subject] = now + 365 * 24 * 3600
+    # Also add any currently-blacklisted tokens for the subject (best-effort)
+    try:
+        bl = getattr(app.state, 'token_blacklist', {})
+        for t in list(bl.keys()):
+            try:
+                # decode without verification to inspect subject safely
+                import jwt as _jwt
+                payload = _jwt.decode(t, options={"verify_signature": False})
+                if payload.get('sub') == subject:
+                    # keep existing expiry
+                    app.state.token_blacklist[t] = bl.get(t, now)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return {'status': 'revoked', 'subject': subject}
+
+
 @app.get('/health')
 async def health():
     return {"status": "ok"}
